@@ -1,0 +1,349 @@
+Project 'FileSyncPilot' has the following package references
+   [net8.0]:
+   Top-level Package                                Requested   Resolved
+   > Microsoft.Extensions.Configuration.Binder      8.0.2       8.0.2
+   > Microsoft.Extensions.Hosting                   8.0.1       8.0.1
+   > Newtonsoft.Json                                13.0.3      13.0.3
+   > xunit                                          2.4.1       2.4.1
+   
+   ================================================================================
+   
+   C:\WINDOWS\system32>sc create "FilesyncPilot" binPath= "C:\publish\FilesyncPilot\FilesyncPilot.exe" start=auto
+[SC] CreateService SUCCESS
+
+C:\WINDOWS\system32>sc start "FilesyncPilot"
+
+SERVICE_NAME: FilesyncPilot
+        TYPE               : 10  WIN32_OWN_PROCESS
+        STATE              : 2  START_PENDING
+                                (NOT_STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+        WIN32_EXIT_CODE    : 0  (0x0)
+        SERVICE_EXIT_CODE  : 0  (0x0)
+        CHECKPOINT         : 0x0
+        WAIT_HINT          : 0x7d0
+        PID                : 15348
+        FLAGS              :
+
+=========================================================================================================
+
+
+
+
+==========================================================================================================
+Question: 
+How do I stop the background service?
+Do I have to stop the service whenever I need to make a changes in the application?
+
+can you tell me the entire program flow in simple english
+
+example: application starts ➡ program.cs is initiated and check these particular things because reason and an analogy) ➡ then it moves to appsetting.js and check these particular lines (because reason and an analogy) ➡ then this .cs file checks the particular folder espcially this line checks it (because reason and an analogy) ➡ then this file checks the conditions and business logic (because reason and an analogy) ➡ finally this is done in this .cs or (some file name) and the program is ended or it keeps running in the background since we are hosted in window (because reason and an analogy)
+
+For(Entire flow, particular function): create a flow diagram prompt for the entire process flow mentioned above also don't forget to mention the hidden background processes
+also mention in which file the process is happening LoadConfiguration(program.cs -> which line)
+==========================================================================================================
+backup:
+using System;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using FilesyncPilot.Models;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace FilesyncPilot.Services
+{
+    public class FileMonitorServices : BackgroundService
+    {
+        private readonly ILogger<FileMonitorServices> _logger;
+        private readonly AppSettings _settings;
+        private FileSystemWatcher _watcher;
+
+        public FileMonitorServices(ILogger<FileMonitorServices> logger, IOptions<AppSettings> settings)
+        {
+            _logger = logger;
+            _settings = settings.Value;
+            setupWatcher();
+        }
+
+        private void setupWatcher()
+        {
+            // Create the watcher for the important folder
+            _watcher = new FileSystemWatcher(_settings.ImportantFolder)
+            {
+                Filter = "*.*",
+                EnableRaisingEvents = true
+            };
+
+            //Attach an event handler for when a new file is created
+            _watcher.Created += OnNewFileCreated;
+            _logger.LogInformation("FileSystemWatcher is monitoring folder: {folder}",
+                _settings.ImportantFolder);
+        }
+
+        private async void OnNewFileCreated(object sender, FileSystemEventArgs e)
+        {
+            _logger.LogInformation("Detected new file: {file}", e.FullPath);
+            try
+            {
+                // wait a moment to ensure file is not still being written 
+                await Task.Delay(500);
+
+                // Read the file content
+                var content = await File.ReadAllTextAsync(e.FullPath);
+
+                // Check if it contains the specific line
+                if (content.Contains("This is important File")) 
+                {
+                    // Move to success folder
+                    var destination = Path.Combine(_settings.SuccessFolder,
+                        Path.GetFileName(e.FullPath));
+                    File.Move(e.FullPath, destination);
+                    _logger.LogInformation("Moved file to success folder: {destination}", destination);
+                }
+                else 
+                {
+                    // Move to failure folder
+                    var destination = Path.Combine(_settings.FailureFolder,
+                        Path.GetFileName(e.FullPath));
+                    File.Move(e.FullPath, destination);
+                    _logger.LogInformation("Moved file to failure folder: {destination}",
+                        destination);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing file: {file}", e.FullPath);
+            }
+        }
+
+        protected override Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            // Keep the service running until cancellation is requested.
+            _logger.LogInformation("FileMonitorService is running");
+            stoppingToken.Register(() => _logger.LogInformation("FileMonitorService is stopping."));
+            return Task.CompletedTask;
+            
+        }
+        public override void Dispose()
+        {
+            _watcher.Dispose();
+            base.Dispose();
+        }
+    }
+}
+=====================================================================================
+
+// This method is called when a new file is created in the monitored directory
+private async void OnNewFileCreated(object sender, FileSystemEventArgs e)
+{
+    // Log a message to say that a new file has been detected, including its full path
+    _logger.LogInformation("Detected new file: {file}", e.FullPath);
+    try
+    {
+        // Wait for a short time (500 milliseconds) to make sure the file is fully written to disk
+        // This is to prevent trying to read the file before it's finished being written
+        await Task.Delay(500);
+
+        // Read the contents of the new file
+        var content = await File.ReadAllTextAsync(e.FullPath);
+
+        // Check if the file contains a specific piece of text
+        if (content.Contains("This is important File"))
+        {
+            // If it does, figure out where to move the file (in this case, the SuccessFolder)
+            var destination = Path.Combine(_settings.SuccessFolder, Path.GetFileName(e.FullPath));
+            // Move the file to the success folder
+            File.Move(e.FullPath, destination);
+            // Log a message to say that the file has been moved to the success folder
+            _logger.LogInformation("Moved file to success folder: {destination}", destination);
+        }
+        else
+        {
+            // If it doesn't contain the specific text, figure out where to move the file (in this case, the FailureFolder)
+            var destination = Path.Combine(_settings.FailureFolder, Path.GetFileName(e.FullPath));
+            // Move the file to the failure folder
+            File.Move(e.FullPath, destination);
+            // Log a message to say that the file has been moved to the failure folder
+            _logger.LogInformation("Moved file to failure folder: {destination}", destination);
+        }
+    }
+    catch (Exception ex)
+    {
+        // If something goes wrong while trying to process the file, log an error message
+        // This includes the details of the error and the path of the file that caused the error
+        _logger.LogError(ex, "Error processing file: {file}", e.FullPath);
+    }
+}
+=====
+
+// This method is where the background service starts executing
+protected override Task ExecuteAsync(CancellationToken stoppingToken)
+{
+    // Log a message to say that the FileMonitorService has started running
+    _logger.LogInformation("FileMonitorService is running");
+
+    // Set up a callback that will run when the service is stopping
+    // This callback will log a message to say that the service is stopping
+    stoppingToken.Register(() => _logger.LogInformation("FileMonitorService is stopping."));
+
+    // Since this service uses a FileSystemWatcher to handle the work,
+    // it doesn't need to run a continuous loop to keep itself busy
+    // So, it can just return a completed Task to indicate that it's done
+    return Task.CompletedTask;
+}
+
+===
+
+// This method is used to clean up and release any system resources when the service is stopped
+public override void Dispose()
+{
+    // Dispose of the FileSystemWatcher to release system resources
+    // This is like turning off a machine to save energy
+    _watcher.Dispose();
+
+    // Call the base class Dispose method for any additional cleanup
+    // This is like making sure the whole house is clean, not just one room
+    base.Dispose();
+}
+
+===
+
+// This method sets up a FileSystemWatcher to monitor a specific directory for changes
+// It's called from the constructor, so it runs when the service is created
+private void setupWatcher()
+{
+    // Create a new FileSystemWatcher that watches the directory defined in the configuration
+    // Think of it like setting up a security camera to watch a specific area
+    _watcher = new FileSystemWatcher(_settings.ImportantFolder)
+    {
+        // Set the filter to watch all file types (not just specific ones like .txt or .docx)
+        // It's like telling the camera to watch for any kind of movement, not just specific things
+        Filter = "*.*",
+        // Start raising events immediately so that changes are detected as soon as they happen
+        // It's like turning on the camera and telling it to start alerting us right away
+        EnableRaisingEvents = true
+    };
+
+    // Attach an event handler to the FileSystemWatcher
+    // This means that when a specific event happens (like a new file being created), a certain method will be called automatically
+    // It's like programming the camera to call a specific phone number when it detects movement
+    _watcher.Created += OnNewFileCreated;
+    // The OnNewFileCreated method is the one that will be called when a new file is created
+    // It's like the camera calling the phone number and saying "Hey, I detected something!"
+
+    // Log a message to say that the FileSystemWatcher is now actively monitoring the specified folder
+    // It's like sending a notification to say "The camera is now watching the area"
+    _logger.LogInformation("FileSystemWatcher is monitoring folder: {folder}", _settings.ImportantFolder);
+}
+
+======================
+
+// This is the setup for a Windows Service application
+using FilesyncPilot; // Main project components
+using FilesyncPilot.Models; // Contains AppSettings configuration class
+using FilesyncPilot.Services; // Contains our FileMonitorService
+using Microsoft.Extensions.DependencyInjection; // Tools for connecting services
+using Microsoft.Extensions.Hosting; // Tools for building background services
+
+// Create the application host (the core of our service)
+IHost host = Host.CreateDefaultBuilder(args) // Start with default settings
+    .UseWindowsService() // Make it run as a Windows Service (like those in Services Manager)
+    .ConfigureServices((hostContext, services) =>
+    {
+        // Load settings from config file (appsettings.json) into AppSettings class
+        services.Configure<AppSettings>(
+            hostContext.Configuration.GetSection("AppSettings")
+        );
+
+        // Add our FileMonitorService to run in the background
+        services.AddHostedService<FileMonitorServices>();
+    })
+    .Build(); // Finalize the setup
+
+// Start the service and keep it running
+await host.RunAsync(); // Like pressing "Start" on a machine
+
+===
+
+// This line tells the testing framework (xUnit) that this is a test method
+[Fact]
+public void IsImportant_ReturnsTrue_WhenContentContainsImportantLine()
+{
+    // Arrange: Prepare the test data
+    // Create a sample string that includes the important line "This is important File"
+    // This string simulates the content of a file that should be recognized as important
+    var content = "Some text\nThis is important File\nMore text";
+
+    // Act: Perform the action being tested
+    // Call the IsImportant method from the FileContentChecker class to test its behavior
+    // This method is called directly because it's a static helper method
+    var result = FileContentChecker.IsImportant(content);
+
+    // Assert: Verify the expected result
+    // Check that the method returns true when the content contains the important line
+    // If the result is not true, the test will fail
+    Assert.True(result);
+}
+
+Dependencies:
+.NETFramework, Version=v3.5
+    DocumentFormat.OpenXML.Framework(>=3.0.0)
+.NETFramework, Version=v4.0
+    DocumentFormat.OpenXML.Framework(>=3.0.0)
+	
+=================================================================
+
+private async void OnNewFileCreated(object sender, FileSystemEventArgs e)
+{
+    _logger.LogInformation("Detected new file: {file}", e.FullPath);
+    try
+    {
+        // Wait a moment to ensure file is not still being written
+        await Task.Delay(500);
+
+        string content;
+
+        // Check the file extension to decide how to read the content
+        if (Path.GetExtension(e.FullPath).Equals(".docx", StringComparison.OrdinalIgnoreCase))
+        {
+            // Use the helper method to extract text from a .docx file
+            content = ExtractTextFromDocx(e.FullPath);
+        }
+        else
+        {
+            // For other file types, read as plain text
+            content = await File.ReadAllTextAsync(e.FullPath);
+        }
+
+        // Check if the content contains the specific line
+        if (content.Contains("This is important File"))
+        {
+            // Move to success folder
+            var destination = Path.Combine(_settings.SuccessFolder, Path.GetFileName(e.FullPath));
+            File.Move(e.FullPath, destination);
+            _logger.LogInformation("Moved file to success folder: {destination}", destination);
+        }
+        else
+        {
+            // Move to failure folder
+            var destination = Path.Combine(_settings.FailureFolder, Path.GetFileName(e.FullPath));
+            File.Move(e.FullPath, destination);
+            _logger.LogInformation("Moved file to failure folder: {destination}", destination);
+        }
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error processing file: {file}", e.FullPath);
+    }
+}
+==================
+
+A file that contains the template that needed (secured) and placed somewhere
+We can change or update the template in certain way then template contents appear in the dropped file, it process to either success or failure folder
+
+later -> it move to concurrent department failure, success folder (Ex: Failure files in IRIS, Dianon, Legacy), (Ex: Success files in IRIS, Dianon, Legacy)

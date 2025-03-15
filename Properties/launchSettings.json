@@ -1,0 +1,12 @@
+﻿{
+  "$schema": "http://json.schemastore.org/launchsettings.json", // Points to the JSON schema for launch settings, ensuring the file structure is valid.
+  "profiles": { // Defines a collection of launch profiles for the application.
+    "FilesyncPilot": { // This profile is named "FilesyncPilot", typically matching your project name.
+      "commandName": "Project", // Indicates that this profile will launch the project directly.
+      "dotnetRunMessages": true, // Enables additional informational messages when running the project via "dotnet run".
+      "environmentVariables": { // Specifies environment variables that will be set when this profile is used.
+        "DOTNET_ENVIRONMENT": "Development" // Sets the environment to "Development", enabling development-specific configurations.
+      }
+    }
+  }
+}
